@@ -187,11 +187,26 @@ class ResultData:
         try:
             if os.path.exists(output_xlsx):
                 wb = openpyxl.load_workbook(filename=output_xlsx)
+                ws = wb.active
+                ws.cell(row = 1, column =  1).value = "id"
+                ws.cell(row = 1, column =  2).value = "ret total"
+                ws.cell(row = 1, column =  3).value = "ret enc run"
+                ws.cell(row = 1, column =  4).value = "ret enc killed"
+                ws.cell(row = 1, column =  5).value = "ret media info"
+                ws.cell(row = 1, column =  6).value = "error expected"
+                ws.cell(row = 1, column =  7).value = "command line"
+                ws.cell(row = 1, column =  8).value = "input file"
+                ws.cell(row = 1, column =  9).value = "output prefix"
+                ws.cell(row = 1, column = 10).value = "comment"
+                ws.cell(row = 1, column = 11).value = "for_qsv"
+                ws.cell(row = 1, column = 12).value = "for_nvenc"
+                ws.cell(row = 1, column = 13).value = "for_vceenc"
+                ws.cell(row = 1, column = 14).value = "full_enc_cmd"
             else:
                 wb = openpyxl.Workbook() #新しいworkbook
-            ws = wb.active
+                ws = wb.active
             try:
-                y = 1 #openpyxlは1スタート
+                y = 2 #openpyxlは1スタート
                 no_data_row = 0
                 THRESOLD_NO_DATA_ROW = 10
                 while ws.cell(row = y, column = 1).value is not None:
