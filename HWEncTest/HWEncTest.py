@@ -544,3 +544,6 @@ if __name__ == '__main__':
     test = HWEncTest(encoder_path, encoder_name, encoder_log_path, mediainfo_compare_dir)
     for test_data in test_table.list_test_data:
         test.run_test(test_data)
+
+    if sleep_after_run:
+        ctypes.windll.PowrProf.SetSuspendState(0, 1, 0)
