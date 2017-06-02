@@ -18,7 +18,7 @@ import time
 outputdir = ""
 logpath = ""
 input_xlsx = ""
-output_xlsx_filename = "result.xlsx"
+output_xlsx_filename = "0000_result.xlsx"
 encoder_log_path = ""
 encoder_log_prefix = ".log"
 x264_path = r'x64\x264.exe'
