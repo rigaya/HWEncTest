@@ -66,13 +66,13 @@ class ProcessChecker:
 
         try:
             return_code = self.process.wait(10)
-            return int(return_code)
+            return ( int(return_code), False )
         except:
             try:
                 self.process.terminate()
             except:
                 print("failed to kill encoder process")
-            return 1
+            return ( 0, True )
  
 class TestData:
     data_id = 0
@@ -159,16 +159,19 @@ class ResultData:
     test_data = None
     ret_total = 0
     ret_enc_run = 0
+    enc_killed = False
     ret_minfo_diff = 0
     full_enc_cmd = ""
 
-    def __init__(self, _test_data, _ret_enc_run, _ret_minfo_diff, _full_enc_cmd):
+    def __init__(self, _test_data, _ret_enc_run, _enc_killed, _ret_minfo_diff, _full_enc_cmd):
         assert isinstance(_test_data, TestData)
         assert isinstance(_ret_enc_run, int)
+        assert isinstance(_enc_killed, bool)
         assert isinstance(_ret_minfo_diff, int)
         assert isinstance(_full_enc_cmd, str)
         self.test_data = _test_data
         self.ret_enc_run = _ret_enc_run
+        self.enc_killed = _enc_killed
         self.ret_minfo_diff = _ret_minfo_diff
         self.full_enc_cmd = _full_enc_cmd
         
@@ -176,6 +179,8 @@ class ResultData:
         if self.ret_enc_run != 0 and self.test_data.error_expected:
             self.ret_total = 0
         if self.ret_enc_run == 0 and self.ret_minfo_diff == 0:
+            self.ret_total = 0
+        if self.enc_killed:
             self.ret_total = 0
 
     def write(self, output_xlsx):
@@ -195,16 +200,17 @@ class ResultData:
                 ws.cell(row = y, column =  1).value = str(self.test_data.data_id)
                 ws.cell(row = y, column =  2).value = ("×" if self.ret_total != 0 else "")
                 ws.cell(row = y, column =  3).value = ("×" if self.ret_enc_run != 0 else "")
-                ws.cell(row = y, column =  4).value = ("×" if self.ret_minfo_diff != 0 else "")
-                ws.cell(row = y, column =  5).value = ("×" if self.test_data.error_expected else "")
-                ws.cell(row = y, column =  6).value = self.test_data.command_line
-                ws.cell(row = y, column =  7).value = self.test_data.inptut_file
-                ws.cell(row = y, column =  8).value = self.test_data.output_prefix
-                ws.cell(row = y, column =  9).value = self.test_data.comment
-                ws.cell(row = y, column = 10).value = ("〇" if self.test_data.for_qsv else "")
-                ws.cell(row = y, column = 11).value = ("〇" if self.test_data.for_nvenc else "")
-                ws.cell(row = y, column = 12).value = ("〇" if self.test_data.for_vceenc else "")
-                ws.cell(row = y, column = 13).value = ("〇" if self.full_enc_cmd else "")
+                ws.cell(row = y, column =  4).value = ("×" if self.enc_killed != 0 else "")
+                ws.cell(row = y, column =  5).value = ("×" if self.ret_minfo_diff != 0 else "")
+                ws.cell(row = y, column =  6).value = ("×" if self.test_data.error_expected else "")
+                ws.cell(row = y, column =  7).value = self.test_data.command_line
+                ws.cell(row = y, column =  8).value = self.test_data.inptut_file
+                ws.cell(row = y, column =  9).value = self.test_data.output_prefix
+                ws.cell(row = y, column = 10).value = self.test_data.comment
+                ws.cell(row = y, column = 11).value = ("〇" if self.test_data.for_qsv else "")
+                ws.cell(row = y, column = 12).value = ("〇" if self.test_data.for_nvenc else "")
+                ws.cell(row = y, column = 13).value = ("〇" if self.test_data.for_vceenc else "")
+                ws.cell(row = y, column = 14).value = ("〇" if self.full_enc_cmd else "")
                 try:
                     wb.save(output_xlsx)
                 except:
@@ -336,17 +342,18 @@ class HWEncTest:
         assert isinstance(test_data, TestData)
 
         cmd = self.generate_enc_cmd(test_data)
+        killed = False
 
         try:
             p = subprocess.Popen(shlex.split(cmd))
             proc_check = ProcessChecker(p)
-            ret = proc_check.wait_or_kill_if_dead()
+            ret, killed = proc_check.wait_or_kill_if_dead()
         except:
             print("failed to run encoder\n");
             print(traceback.format_exc())
             ret = 1
 
-        return ret
+        return ( ret, killed )
 
     def run_mediainfo(self, test_data):
         assert isinstance(test_data, TestData)
@@ -416,7 +423,7 @@ class HWEncTest:
         print("-------------------------------------------------------------------------------")
         print("start test #" + str(test_data.data_id))
 
-        ret_enc_run = self.run_encoder(test_data)
+        ret_enc_run, enc_killed = self.run_encoder(test_data)
         ret_minfo_run = 0
         ret_minfo_diff = 0
 
@@ -444,7 +451,7 @@ class HWEncTest:
             print("error opening " + encoder_name + " log file.\n")
             print(traceback.format_exc())
 
-        result_data = ResultData(test_data, ret_enc_run, ret_minfo_diff, self.generate_enc_cmd(test_data))
+        result_data = ResultData(test_data, ret_enc_run, enc_killed, ret_minfo_diff, self.generate_enc_cmd(test_data))
         result_data.write(os.path.join(outputdir, output_xlsx_filename))
         print("check_result: " + ("〇" if (result_data.ret_total == 0) else "×"))
 
