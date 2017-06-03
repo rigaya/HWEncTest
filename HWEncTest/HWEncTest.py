@@ -322,7 +322,7 @@ class HWEncTest:
             cmd = cmd.replace("--d3d11", "")
             cmd = cmd.replace("--d3d9", "")
             cmd = cmd.replace("--disable-d3d", "")
-            cmd = cmd.replace("-u 7", "")
+            cmd = cmd.replace("-u 7", "--preset performance")
             cmd = cmd.replace("--avqsv", "--avcuvid")
         elif encoder_name == "vceencc":
             cmd = cmd.replace("-u 7", "")
