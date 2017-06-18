@@ -176,12 +176,11 @@ class ResultData:
         self.full_enc_cmd = _full_enc_cmd
         
         self.ret_total = 1
-        if self.ret_enc_run != 0 and self.test_data.error_expected:
-            self.ret_total = 0
-        if self.ret_enc_run == 0 and self.ret_minfo_diff == 0:
-            self.ret_total = 0
-        if self.enc_killed:
-            self.ret_total = 0
+        if self.enc_killed == 0:
+            if self.ret_enc_run != 0 and self.test_data.error_expected:
+                self.ret_total = 0
+            if self.ret_enc_run == 0 and self.ret_minfo_diff == 0:
+                self.ret_total = 0
 
     def write(self, output_xlsx):
         try:
