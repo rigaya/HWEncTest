@@ -6,12 +6,17 @@
     <ProjectGuid>202d2466-39e5-4bce-b4f9-a61e8318fc09</ProjectGuid>
     <ProjectHome>.</ProjectHome>
     <StartupFile>HWEncTest.py</StartupFile>
-    <SearchPath>
-    </SearchPath>
-    <WorkingDirectory>.</WorkingDirectory>
+    <SearchPath>Y:\QSVTest</SearchPath>
+    <WorkingDirectory>Y:\QSVTest</WorkingDirectory>
     <OutputPath>.</OutputPath>
     <Name>HWEncTest</Name>
     <RootNamespace>HWEncTest</RootNamespace>
+    <IsWindowsApplication>False</IsWindowsApplication>
+    <LaunchProvider>Standard Python launcher</LaunchProvider>
+    <CommandLineArguments>-n</CommandLineArguments>
+    <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
+    <InterpreterPath>
+    </InterpreterPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>

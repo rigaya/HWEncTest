@@ -26,6 +26,7 @@ avs2pipemod_path = r'x86\Avs2Pipemod.exe'
 qsvencc_path = r'x86\QSVEncC_2.62.exe'
 nvencc_path = r'x86\NVEncC.exe'
 vceencc_path = r'x86\VCEEncC.exe'
+ffmpeg_path = r'x86\ffmpeg.exe'
 mediainfo_path = r'MediaInfo\MediaInfo.exe'
 mediainfo_template = r'HWEncTestMediaInfoTemplate.txt'
 mediainfo_check = False
@@ -37,6 +38,17 @@ test_count=0
 test_start=0
 test_target=0
 
+
+def kill_proc_tree(pid, including_parent=True):    
+    parent = psutil.Process(pid)
+    children = parent.children(recursive=True)
+    for child in children:
+        child.kill()
+    gone, still_alive = psutil.wait_procs(children, timeout=5)
+    if including_parent:
+        parent.kill()
+        parent.wait(5)
+
 class ProcessChecker:
     process = None
 
@@ -46,8 +58,22 @@ class ProcessChecker:
     #プロセスの終了を待機し、終了コードを取得する
     #プロセスのCPU使用率が連続で十分低かったら、
     #プロセスが強制終了したとみなし、1を返す
-    def wait_or_kill_if_dead(self):
+    def wait_or_kill_if_dead(self, exename):
         ps = psutil.Process(self.process.pid)
+        if exename != "cmd.exe":
+            try:
+                while ps.name() == "cmd.exe":
+                    for pchild in ps.children():
+                        if exename in pchild.name():
+                            ps = pchild
+                    time.sleep(1)
+            except psutil.NoSuchProcess:
+                time.sleep(1)
+                return_code = self.process.wait()
+                return ( int(return_code), False )
+            except:
+                raise
+
         cpu_usage_none_count = 0 #連続でCPU使用率が低い回数
         CPU_USAGE_NONE_MAX = 30 #プロセスが強制終了したとみなす、連続でCPU使用率が低い回数の閾値
         return_code = None #終了コード
@@ -69,7 +95,7 @@ class ProcessChecker:
             return ( int(return_code), False )
         except:
             try:
-                self.process.terminate()
+                kill_proc_tree(self.process.pid)
             except:
                 print("failed to kill encoder process")
             return ( 0, True )
@@ -128,7 +154,7 @@ class TestTable:
         no_data_row = 0
         THRESOLD_NO_DATA_ROW = 10 #行に連続でデータがなければ、データはもうないとみなす
         while no_data_row < THRESOLD_NO_DATA_ROW:
-            if ws.cell(row = y, column = 5).value is None:
+            if ws.cell(row = y, column = 4).value is None and ws.cell(row = y, column = 5).value is None:
                 no_data_row = no_data_row + 1
             else:
                 data_id = data_id + 1
@@ -317,6 +343,10 @@ class HWEncTest:
     def replace_cmd(self, test_data, cmd):
         assert isinstance(test_data, TestData)
         cmd = cmd.replace("$(OutDir)", outputdir)
+        cmd = cmd.replace("$(InputFile)", test_data.inptut_file)
+        cmd = cmd.replace("$(OutputFile)", self.output_file_path(test_data))
+        cmd = cmd.replace("$(ExePath)", self.encoder_path)
+        cmd = cmd.replace("$(FFmpegPath)", ffmpeg_path)
         if encoder_name == "nvencc":
             cmd = cmd.replace("--d3d11", "")
             cmd = cmd.replace("--d3d9", "")
@@ -347,10 +377,24 @@ class HWEncTest:
 
     def generate_enc_cmd(self, test_data):
         assert isinstance(test_data, TestData)
-        return "\"" + encoder_path + "\" " + self.replace_cmd(test_data, test_data.command_line) \
-            + " -i \"" + test_data.inptut_file + "\"" \
-            + " -o \"" + self.output_file_path(test_data) + "\"" \
+        add_exepath = ("$(ExePath)" not in test_data.command_line)
+        add_input = ("$(InputFile)" not in test_data.command_line) and len(test_data.inptut_file) > 0
+        add_output = ("$(OutputFile)" not in test_data.command_line) and len(test_data.output_prefix) > 0
+
+        cmd = ""
+        if add_exepath:
+            cmd = "\"" + self.encoder_path + "\" "
+
+        cmd = cmd + self.replace_cmd(test_data, test_data.command_line) \
             + " --log \"" + self.log_file_path(test_data) + "\""
+
+        if add_output:
+            cmd = cmd + " -o \"" + self.output_file_path(test_data) + "\""
+
+        if add_input:
+            cmd = cmd + " -i \"" + test_data.inptut_file + "\""
+
+        return cmd 
 
     def run_encoder(self, test_data):
         assert isinstance(test_data, TestData)
@@ -359,9 +403,9 @@ class HWEncTest:
         killed = False
 
         try:
-            p = subprocess.Popen(shlex.split(cmd))
+            p = subprocess.Popen(cmd, shell=True)
             proc_check = ProcessChecker(p)
-            ret, killed = proc_check.wait_or_kill_if_dead()
+            ret, killed = proc_check.wait_or_kill_if_dead(os.path.basename(self.encoder_path))
         except:
             print("failed to run encoder\n");
             print(traceback.format_exc())
@@ -450,20 +494,21 @@ class HWEncTest:
 
             if ret_minfo_run == 0:
                 ret_minfo_diff = self.compare_mediainfo(test_data)
-
-        try:
-            fp_enc_log = open(self.log_file_path(test_data), "r")
-            log_lines = fp_enc_log.readlines()
-            fp_enc_log.close()
         
-            fp_enc_log = open(self.encoder_log_path, "a")
-            fp_enc_log.writelines("-------------------------------------------------------------------------------\n")
-            fp_enc_log.writelines("start test #" + str(test_data.data_id) + "\n")
-            fp_enc_log.writelines(log_lines)
-            fp_enc_log.close()
-        except:
-            print("error opening " + encoder_name + " log file.\n")
-            print(traceback.format_exc())
+        if "option_check" not in test_data.comment:
+            try:
+                fp_enc_log = open(self.log_file_path(test_data), "r")
+                log_lines = fp_enc_log.readlines()
+                fp_enc_log.close()
+        
+                fp_enc_log = open(self.encoder_log_path, "a")
+                fp_enc_log.writelines("-------------------------------------------------------------------------------\n")
+                fp_enc_log.writelines("start test #" + str(test_data.data_id) + "\n")
+                fp_enc_log.writelines(log_lines)
+                fp_enc_log.close()
+            except:
+                print("error opening " + encoder_name + " log file.\n")
+                print(traceback.format_exc())
 
         result_data = ResultData(test_data, ret_enc_run, enc_killed, ret_minfo_diff, self.generate_enc_cmd(test_data))
         result_data.write(os.path.join(outputdir, output_xlsx_filename))
@@ -542,7 +587,8 @@ if __name__ == '__main__':
     
     test = HWEncTest(encoder_path, encoder_name, encoder_log_path, mediainfo_compare_dir)
     for test_data in test_table.list_test_data:
-        test.run_test(test_data)
+        if test_target == 0 or test_data.data_id == test_target: 
+            test.run_test(test_data)
 
     if sleep_after_run:
         ctypes.windll.PowrProf.SetSuspendState(0, 1, 0)
