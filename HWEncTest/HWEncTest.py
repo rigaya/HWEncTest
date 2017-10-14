@@ -34,6 +34,7 @@ mediainfo_check_log_appendix = ".mediainfo.txt"
 mediainfo_check_diff_appendix = ".mediainfo.diff"
 encoder_path = qsvencc_path
 encoder_name = ""
+filesize_threshold = 0.005
 test_count=0
 test_start=0
 test_target=0
@@ -187,9 +188,10 @@ class ResultData:
     ret_enc_run = 0
     enc_killed = False
     ret_minfo_diff = 0
+    ret_filesize = 0
     full_enc_cmd = ""
 
-    def __init__(self, _test_data, _ret_enc_run, _enc_killed, _ret_minfo_diff, _full_enc_cmd):
+    def __init__(self, _test_data, _ret_enc_run, _enc_killed, _ret_minfo_diff, _ret_filesize, _full_enc_cmd):
         assert isinstance(_test_data, TestData)
         assert isinstance(_ret_enc_run, int)
         assert isinstance(_enc_killed, bool)
@@ -199,13 +201,14 @@ class ResultData:
         self.ret_enc_run = _ret_enc_run
         self.enc_killed = _enc_killed
         self.ret_minfo_diff = _ret_minfo_diff
+        self.ret_filesize = _ret_filesize
         self.full_enc_cmd = _full_enc_cmd
         
         self.ret_total = 1
         if self.enc_killed == 0:
             if self.ret_enc_run != 0 and self.test_data.error_expected:
                 self.ret_total = 0
-            if self.ret_enc_run == 0 and self.ret_minfo_diff == 0:
+            if self.ret_enc_run == 0 and self.ret_minfo_diff == 0 and self.ret_filesize == 0:
                 self.ret_total = 0
 
     def write(self, output_xlsx):
@@ -218,15 +221,16 @@ class ResultData:
                 ws.cell(row = 1, column =  3).value = "ret enc run"
                 ws.cell(row = 1, column =  4).value = "ret enc killed"
                 ws.cell(row = 1, column =  5).value = "ret media info"
-                ws.cell(row = 1, column =  6).value = "error expected"
-                ws.cell(row = 1, column =  7).value = "command line"
-                ws.cell(row = 1, column =  8).value = "input file"
-                ws.cell(row = 1, column =  9).value = "output prefix"
-                ws.cell(row = 1, column = 10).value = "comment"
-                ws.cell(row = 1, column = 11).value = "for_qsv"
-                ws.cell(row = 1, column = 12).value = "for_nvenc"
-                ws.cell(row = 1, column = 13).value = "for_vceenc"
-                ws.cell(row = 1, column = 14).value = "full_enc_cmd"
+                ws.cell(row = 1, column =  6).value = "ret file size"
+                ws.cell(row = 1, column =  7).value = "error expected"
+                ws.cell(row = 1, column =  8).value = "command line"
+                ws.cell(row = 1, column =  9).value = "input file"
+                ws.cell(row = 1, column = 10).value = "output prefix"
+                ws.cell(row = 1, column = 11).value = "comment"
+                ws.cell(row = 1, column = 12).value = "for_qsv"
+                ws.cell(row = 1, column = 13).value = "for_nvenc"
+                ws.cell(row = 1, column = 14).value = "for_vceenc"
+                ws.cell(row = 1, column = 15).value = "full_enc_cmd"
             else:
                 wb = openpyxl.Workbook() #新しいworkbook
                 ws = wb.active
@@ -242,15 +246,16 @@ class ResultData:
                 ws.cell(row = y, column =  3).value = ("×" if self.ret_enc_run != 0 else "")
                 ws.cell(row = y, column =  4).value = ("×" if self.enc_killed != 0 else "")
                 ws.cell(row = y, column =  5).value = ("×" if self.ret_minfo_diff != 0 else "")
-                ws.cell(row = y, column =  6).value = ("×" if self.test_data.error_expected else "")
-                ws.cell(row = y, column =  7).value = self.test_data.command_line
-                ws.cell(row = y, column =  8).value = self.test_data.inptut_file
-                ws.cell(row = y, column =  9).value = self.test_data.output_prefix
-                ws.cell(row = y, column = 10).value = self.test_data.comment
-                ws.cell(row = y, column = 11).value = ("〇" if self.test_data.for_qsv else "")
-                ws.cell(row = y, column = 12).value = ("〇" if self.test_data.for_nvenc else "")
-                ws.cell(row = y, column = 13).value = ("〇" if self.test_data.for_vceenc else "")
-                ws.cell(row = y, column = 14).value = ("〇" if self.full_enc_cmd else "")
+                ws.cell(row = y, column =  6).value = ("×" if self.ret_filesize != 0 else "")
+                ws.cell(row = y, column =  7).value = ("×" if self.test_data.error_expected else "")
+                ws.cell(row = y, column =  8).value = self.test_data.command_line
+                ws.cell(row = y, column =  9).value = self.test_data.inptut_file
+                ws.cell(row = y, column = 10).value = self.test_data.output_prefix
+                ws.cell(row = y, column = 11).value = self.test_data.comment
+                ws.cell(row = y, column = 12).value = ("〇" if self.test_data.for_qsv else "")
+                ws.cell(row = y, column = 13).value = ("〇" if self.test_data.for_nvenc else "")
+                ws.cell(row = y, column = 14).value = ("〇" if self.test_data.for_vceenc else "")
+                ws.cell(row = y, column = 15).value = ("〇" if self.full_enc_cmd else "")
                 try:
                     wb.save(output_xlsx)
                 except:
@@ -295,23 +300,25 @@ class ResultTable:
                     data_id = int(ws.cell(row = y, column =  1).value)
                     ret_total = 1 if self.cell_str(ws.cell(row = y, column = 2).value) == "×" else 0
                     ret_enc_run = 1 if self.cell_str(ws.cell(row = y, column = 3).value) == "×" else 0
-                    ret_minfo_diff = 1 if self.cell_str(ws.cell(row = y, column = 4).value) == "×" else 0
-                    error_expected = self.cell_str(ws.cell(row = y, column = 5).value) == "×"
-                    command_line = self.cell_str(ws.cell(row = y, column = 6).value)
-                    inptut_file = self.cell_str(ws.cell(row = y, column = 7).value)
-                    output_prefix = self.cell_str(ws.cell(row = y, column = 8).value)
-                    comment = self.cell_str(ws.cell(row = y, column = 9).value)
-                    for_qsv = self.cell_str(ws.cell(row = y, column = 10).value) == "〇"
-                    for_nvenc = self.cell_str(ws.cell(row = y, column = 11).value) == "〇"
-                    for_vceenc = self.cell_str(ws.cell(row = y, column = 12).value) == "〇"
-                    full_enc_cmd = self.cell_str(ws.cell(row = y, column = 13).value)
+                    enc_killed = 1 if self.cell_str(ws.cell(row = y, column = 4).value) == "×" else 0
+                    ret_minfo_diff = 1 if self.cell_str(ws.cell(row = y, column = 5).value) == "×" else 0
+                    ret_filesize = 1 if self.cell_str(ws.cell(row = y, column = 6).value) == "×" else 0
+                    error_expected = self.cell_str(ws.cell(row = y, column = 7).value) == "×"
+                    command_line = self.cell_str(ws.cell(row = y, column = 8).value)
+                    inptut_file = self.cell_str(ws.cell(row = y, column = 9).value)
+                    output_prefix = self.cell_str(ws.cell(row = y, column = 10).value)
+                    comment = self.cell_str(ws.cell(row = y, column = 11).value)
+                    for_qsv = self.cell_str(ws.cell(row = y, column = 12).value) == "〇"
+                    for_nvenc = self.cell_str(ws.cell(row = y, column = 13).value) == "〇"
+                    for_vceenc = self.cell_str(ws.cell(row = y, column = 14).value) == "〇"
+                    full_enc_cmd = self.cell_str(ws.cell(row = y, column = 15).value)
                 except:
                     print("failed to parse xlsx file row " + str(y))
                     print(traceback.format_exc())
                     exit(1)
 
                 test_data = TestData(data_id, for_qsv, for_nvenc, for_vceenc, command_line, inptut_file, output_prefix, comment, error_expected)
-                result_data = ResultData(test_data, ret_enc_run, ret_minfo_diff, full_enc_cmd)
+                result_data = ResultData(test_data, ret_enc_run, enc_killed, ret_minfo_diff, ret_filesize, full_enc_cmd)
                 self.list_result_data.append(test_data)
                 y = y + 1
 
@@ -473,6 +480,34 @@ class HWEncTest:
         ratio = difflib.SequenceMatcher(None, text_compare, text_current).ratio()
         return 0 if ratio == 1.0 else 1
 
+    def compare_filesize(self, test_data):
+        assert isinstance(test_data, TestData)
+        if self.mediainfo_compare_dir is None or len(self.mediainfo_compare_dir) == 0:
+            return 0
+
+        out_file_current = self.output_file_path(test_data)
+        out_file_compare = os.path.join(self.mediainfo_compare_dir, \
+            "{0:04d}".format(test_data.data_id) + "_" \
+            + ("" if test_data.inptut_file == "-" else test_data.inptut_file) \
+            + test_data.output_prefix)
+
+        try:
+            size_current = os.path.getsize(out_file_current)
+        except:
+            print("failed to get file size of output file: " + out_file_current);
+            print(traceback.format_exc())
+            return 1
+
+        try:
+            size_compare = os.path.getsize(out_file_compare)
+        except:
+            print("failed to get file size of output file: " + out_file_compare);
+            print(traceback.format_exc())
+            return 1
+
+        ratio = abs(1.0 - float(size_current) / float(size_compare))
+        return 0 if ratio < filesize_threshold else 1
+
     def run_test(self, test_data):
         assert isinstance(test_data, TestData)
         if not self.check_if_run_required(test_data):
@@ -484,6 +519,7 @@ class HWEncTest:
         ret_enc_run, enc_killed = self.run_encoder(test_data)
         ret_minfo_run = 0
         ret_minfo_diff = 0
+        ret_file_size = 0
 
         if ret_enc_run == 0:
             if not os.path.exists(self.output_file_path(test_data)):
@@ -494,6 +530,7 @@ class HWEncTest:
 
             if ret_minfo_run == 0:
                 ret_minfo_diff = self.compare_mediainfo(test_data)
+                ret_file_size = self.compare_filesize(test_data)
         
         if "option_check" not in test_data.comment:
             try:
@@ -510,7 +547,7 @@ class HWEncTest:
                 print("error opening " + encoder_name + " log file.\n")
                 print(traceback.format_exc())
 
-        result_data = ResultData(test_data, ret_enc_run, enc_killed, ret_minfo_diff, self.generate_enc_cmd(test_data))
+        result_data = ResultData(test_data, ret_enc_run, enc_killed, ret_minfo_diff, ret_file_size, self.generate_enc_cmd(test_data))
         result_data.write(os.path.join(outputdir, output_xlsx_filename))
         print("check_result: " + ("〇" if (result_data.ret_total == 0) else "×"))
 
