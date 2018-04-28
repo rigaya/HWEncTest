@@ -505,6 +505,12 @@ class HWEncTest:
             print(traceback.format_exc())
             return 1
 
+        if size_current == 0:
+            return 1
+
+        if size_compare == 0:
+            return 1
+
         ratio = abs(1.0 - float(size_current) / float(size_compare))
         return 0 if ratio < filesize_threshold else 1
 
