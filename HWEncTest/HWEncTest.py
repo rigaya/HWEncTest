@@ -572,6 +572,9 @@ if __name__ == '__main__':
         if sys.argv[iarg] == "-s":
             sleep_after_run = True
             print("sleep_after_run")
+        elif sys.argv[iarg] == "-o":
+            iarg=iarg+1
+            outputdir = sys.argv[iarg]
         elif sys.argv[iarg] == "-q":
             encoder_path = qsvencc_path
         elif sys.argv[iarg] == "-qp":
@@ -613,7 +616,7 @@ if __name__ == '__main__':
 
     py_path, py_ext = os.path.splitext(os.path.basename(__file__))
     input_xlsx = py_path + ".xlsx"
-    outputdir = "output_" + computer_name + "_" + encoder_name + "_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    outputdir = os.path.join(outputdir, "output_" + computer_name + "_" + encoder_name + "_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
     logpath = encoder_name + "_test_result_" + computer_name + ".csv"
     encoder_log_path = encoder_name + "_test_" + computer_name + ".txt"
     print("encoder selected:" + encoder_name)
