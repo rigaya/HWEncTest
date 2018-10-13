@@ -173,9 +173,10 @@ class TestTable:
                     print("failed to parse xlsx file row " + str(y))
                     print(traceback.format_exc())
                     exit(1)
-
-                test_data = TestData(data_id, for_qsv, for_nvenc, for_vceenc, command_line, inptut_file, output_prefix, comment, error_expected)
-                self.list_test_data.append(test_data)
+                
+                if data_id >= test_start: 
+                    test_data = TestData(data_id, for_qsv, for_nvenc, for_vceenc, command_line, inptut_file, output_prefix, comment, error_expected)
+                    self.list_test_data.append(test_data)
 
             #次の行へ
             y = y + 1
@@ -504,7 +505,7 @@ class HWEncTest:
             print("failed to get file size of output file: " + out_file_compare);
             print(traceback.format_exc())
             return 1
-
+            
         if size_current == 0:
             return 1
 
