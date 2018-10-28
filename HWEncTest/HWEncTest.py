@@ -14,6 +14,8 @@ import codecs
 import difflib
 import psutil
 import time
+import threading
+import joblib
 
 outputdir = ""
 logpath = ""
@@ -23,7 +25,7 @@ encoder_log_path = ""
 encoder_log_prefix = ".log"
 x264_path = r'x64\x264.exe'
 avs2pipemod_path = r'x86\Avs2Pipemod.exe'
-qsvencc_path = r'x86\QSVEncC_2.62.exe'
+qsvencc_path = r'x64\QSVEncC64.exe'
 nvencc_path = r'x86\NVEncC.exe'
 vceencc_path = r'x86\VCEEncC.exe'
 ffmpeg_path = r'x86\ffmpeg.exe'
@@ -38,9 +40,10 @@ filesize_threshold = 0.005
 test_count=0
 test_start=0
 test_target=0
+lock = threading.Lock()
 
 
-def kill_proc_tree(pid, including_parent=True):    
+def kill_proc_tree(pid, including_parent=True):
     parent = psutil.Process(pid)
     children = parent.children(recursive=True)
     for child in children:
@@ -55,7 +58,7 @@ class ProcessChecker:
 
     def __init__(self, _process):
         self.process = _process
-        
+
     #プロセスの終了を待機し、終了コードを取得する
     #プロセスのCPU使用率が連続で十分低かったら、
     #プロセスが強制終了したとみなし、1を返す
@@ -87,7 +90,7 @@ class ProcessChecker:
                     cpu_usage_none_count = 0
             except:
                 cpu_usage_none_count = cpu_usage_none_count + 1
-            
+
             #プロセスが終了していなければ、Noneを返す
             return_code = self.process.poll()
 
@@ -100,7 +103,7 @@ class ProcessChecker:
             except:
                 print("failed to kill encoder process")
             return ( 0, True )
- 
+
 class TestData:
     data_id = 0
     for_qsv = True
@@ -173,8 +176,8 @@ class TestTable:
                     print("failed to parse xlsx file row " + str(y))
                     print(traceback.format_exc())
                     exit(1)
-                
-                if data_id >= test_start: 
+
+                if data_id >= test_start:
                     test_data = TestData(data_id, for_qsv, for_nvenc, for_vceenc, command_line, inptut_file, output_prefix, comment, error_expected)
                     self.list_test_data.append(test_data)
 
@@ -204,7 +207,7 @@ class ResultData:
         self.ret_minfo_diff = _ret_minfo_diff
         self.ret_filesize = _ret_filesize
         self.full_enc_cmd = _full_enc_cmd
-        
+
         self.ret_total = 1
         if self.enc_killed == 0:
             if self.ret_enc_run != 0 and self.test_data.error_expected:
@@ -213,7 +216,9 @@ class ResultData:
                 self.ret_total = 0
 
     def write(self, output_xlsx):
+        global lock
         try:
+            lock.acquire()
             if os.path.exists(output_xlsx):
                 wb = openpyxl.load_workbook(filename=output_xlsx)
                 ws = wb.active
@@ -241,7 +246,7 @@ class ResultData:
                 THRESOLD_NO_DATA_ROW = 10
                 while ws.cell(row = y, column = 1).value is not None:
                     y = y + 1
-                
+
                 ws.cell(row = y, column =  1).value = str(self.test_data.data_id)
                 ws.cell(row = y, column =  2).value = ("×" if self.ret_total != 0 else "")
                 ws.cell(row = y, column =  3).value = ("×" if self.ret_enc_run != 0 else "")
@@ -268,6 +273,8 @@ class ResultData:
         except:
             print("failed to open xlsx file : " + output_xlsx)
             print(traceback.format_exc())
+        finally:
+            lock.release()
 
 class ResultTable:
     list_result_data = []
@@ -402,7 +409,7 @@ class HWEncTest:
         if add_input:
             cmd = cmd + " -i \"" + test_data.inptut_file + "\""
 
-        return cmd 
+        return cmd + " 2> nul"
 
     def run_encoder(self, test_data):
         assert isinstance(test_data, TestData)
@@ -444,7 +451,7 @@ class HWEncTest:
             "{0:04d}".format(test_data.data_id) + "_" \
             + ("" if test_data.inptut_file == "-" else test_data.inptut_file) \
             + test_data.output_prefix + mediainfo_check_log_appendix)
-            
+
         try:
             #mediainfoの出力はUTF-8
             document_compare = codecs.open(minfo_log_compare, 'r', 'utf-8')
@@ -452,7 +459,7 @@ class HWEncTest:
             print("failed to open file: " + minfo_log_compare);
             print(traceback.format_exc())
             return 1
-                
+
         try:
             #mediainfoの出力はUTF-8
             document_current = codecs.open(minfo_log_current, 'r', 'utf-8')
@@ -467,7 +474,7 @@ class HWEncTest:
         mediainfo_log_diff = difflib.unified_diff(text_compare, text_current, minfo_log_compare, minfo_log_current, lineterm='\n')
 
         diff_file_path = self.output_file_path(test_data) + mediainfo_check_diff_appendix
-            
+
         try:
             diff_file = codecs.open(diff_file_path, 'w', 'utf-8')
             for diff_line in mediainfo_log_diff:
@@ -505,7 +512,7 @@ class HWEncTest:
             print("failed to get file size of output file: " + out_file_compare);
             print(traceback.format_exc())
             return 1
-            
+
         if size_current == 0:
             return 1
 
@@ -538,13 +545,13 @@ class HWEncTest:
             if ret_minfo_run == 0:
                 ret_minfo_diff = self.compare_mediainfo(test_data)
                 ret_file_size = self.compare_filesize(test_data)
-        
+
         if "option_check" not in test_data.comment:
             try:
                 fp_enc_log = open(self.log_file_path(test_data), "r")
                 log_lines = fp_enc_log.readlines()
                 fp_enc_log.close()
-        
+
                 fp_enc_log = open(self.encoder_log_path, "a")
                 fp_enc_log.writelines("-------------------------------------------------------------------------------\n")
                 fp_enc_log.writelines("start test #" + str(test_data.data_id) + "\n")
@@ -560,13 +567,14 @@ class HWEncTest:
 
         return True if (result_data.ret_total == 0) else False
 
-  
+
 if __name__ == '__main__':
     computer_name = os.environ.get("COMPUTERNAME")
     sleep_after_run = False
     print(sys.version_info)
 
     mediainfo_compare_dir = ""
+    process = 1
 
     iarg = 0
     while iarg < len(sys.argv):
@@ -576,6 +584,9 @@ if __name__ == '__main__':
         elif sys.argv[iarg] == "-o":
             iarg=iarg+1
             outputdir = sys.argv[iarg]
+        elif sys.argv[iarg] == "-p":
+            iarg=iarg+1
+            process = int(sys.argv[iarg])
         elif sys.argv[iarg] == "-q":
             encoder_path = qsvencc_path
         elif sys.argv[iarg] == "-qp":
@@ -621,8 +632,8 @@ if __name__ == '__main__':
     logpath = encoder_name + "_test_result_" + computer_name + ".csv"
     encoder_log_path = encoder_name + "_test_" + computer_name + ".txt"
     print("encoder selected:" + encoder_name)
-    
-    if os.path.isdir(outputdir): 
+
+    if os.path.isdir(outputdir):
         shutil.rmtree(outputdir)
     os.mkdir(outputdir)
     if os.path.exists(logpath):
@@ -631,11 +642,13 @@ if __name__ == '__main__':
         os.remove(encoder_log_path)
 
     test_table = TestTable(input_xlsx)
-    
+
     test = HWEncTest(encoder_path, encoder_name, encoder_log_path, mediainfo_compare_dir)
-    for test_data in test_table.list_test_data:
-        if test_target == 0 or test_data.data_id == test_target: 
-            test.run_test(test_data)
+
+    result = joblib.Parallel(n_jobs=process, backend='threading')( \
+        [joblib.delayed(test.run_test)(test_data) for test_data in \
+            [test_data for test_data in test_table.list_test_data if (test_target == 0 or test_data.data_id == test_target)] \
+        ])
 
     if sleep_after_run:
         ctypes.windll.PowrProf.SetSuspendState(0, 1, 0)
