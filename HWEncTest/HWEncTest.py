@@ -42,6 +42,26 @@ test_start=0
 test_target=0
 lock = threading.Lock()
 
+def remove_cmd(cmd, target, with_param):
+    poss = cmd.find(target)
+    if poss < 0:
+        return cmd
+    
+    pose = poss + len(target) + 1
+    if with_param:
+        while cmd[pose] == ' ':
+            pose += 1
+        flag = False
+        while pose < len(cmd) and (flag or cmd[pose] != ' '):
+            if cmd[pose] == '\"':
+                flag = not(flag)
+            pose += 1
+    
+    if pose < len(cmd):
+        return cmd[0:poss] + cmd[pose:]
+    else:
+        return cmd[0:poss]
+
 
 def kill_proc_tree(pid, including_parent=True):
     parent = psutil.Process(pid)
@@ -367,7 +387,7 @@ class HWEncTest:
             cmd = cmd.replace("--d3d9", "")
             cmd = cmd.replace("--disable-d3d", "")
             cmd = cmd.replace("-u 7", "--preset performance")
-            cmd = cmd.replace("--avqsv", "--avcuvid")
+            cmd = cmd.replace("--avqsv", "--avhw")
         elif encoder_name == "vceencc":
             cmd = cmd.replace("-u 7", "")
             cmd = cmd.replace("--tff", "")
@@ -376,7 +396,8 @@ class HWEncTest:
             cmd = cmd.replace("--disable-d3d", "")
             cmd = cmd.replace("--vpp-deinterlace normal", "")
             cmd = cmd.replace("--vpp-deinterlace bob", "")
-            cmd = cmd.replace("--avqsv", "--avvce")
+            cmd = cmd.replace("--avqsv", "--avhw")
+            cmd = remove_cmd(cmd, "--trim", True)
         return cmd
 
     def output_file_path(self, test_data):
