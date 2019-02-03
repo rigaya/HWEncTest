@@ -257,6 +257,20 @@ class ResultData:
                 ws.cell(row = 1, column = 13).value = "for_nvenc"
                 ws.cell(row = 1, column = 14).value = "for_vceenc"
                 ws.cell(row = 1, column = 15).value = "full_enc_cmd"
+                ws.column_dimensions[openpyxl.utils.get_column_letter( 1)].width = 5
+                ws.column_dimensions[openpyxl.utils.get_column_letter( 2)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter( 3)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter( 4)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter( 5)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter( 6)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter( 7)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter( 8)].width = 60
+                ws.column_dimensions[openpyxl.utils.get_column_letter( 9)].width = 50
+                ws.column_dimensions[openpyxl.utils.get_column_letter(11)].width = 40
+                ws.column_dimensions[openpyxl.utils.get_column_letter(12)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter(13)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter(14)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter(15)].width = 3
             else:
                 wb = openpyxl.Workbook() #新しいworkbook
                 ws = wb.active
@@ -282,6 +296,10 @@ class ResultData:
                 ws.cell(row = y, column = 13).value = ("〇" if self.test_data.for_nvenc else "")
                 ws.cell(row = y, column = 14).value = ("〇" if self.test_data.for_vceenc else "")
                 ws.cell(row = y, column = 15).value = ("〇" if self.full_enc_cmd else "")
+                ws.cell(row = y, column =  8).number_format = openpyxl.styles.numbers.FORMAT_TEXT
+                ws.cell(row = y, column =  9).number_format = openpyxl.styles.numbers.FORMAT_TEXT
+                ws.cell(row = y, column = 10).number_format = openpyxl.styles.numbers.FORMAT_TEXT
+                ws.cell(row = y, column = 11).number_format = openpyxl.styles.numbers.FORMAT_TEXT
                 try:
                     wb.save(output_xlsx)
                 except:
