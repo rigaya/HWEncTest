@@ -40,6 +40,7 @@ filesize_threshold = 0.005
 test_count=0
 test_start=0
 test_target=0
+UseProcessChecker=True
 lock = threading.Lock()
 
 def remove_cmd(cmd, target, with_param):
@@ -461,8 +462,12 @@ class HWEncTest:
 
         try:
             p = subprocess.Popen(cmd, shell=True)
-            proc_check = ProcessChecker(p)
-            ret, killed = proc_check.wait_or_kill_if_dead(os.path.basename(self.encoder_path))
+            if UseProcessChecker:
+                proc_check = ProcessChecker(p)
+                ret, killed = proc_check.wait_or_kill_if_dead(os.path.basename(self.encoder_path))
+            else:
+                ret = p.wait()
+                killed = False
         except:
             print("failed to run encoder\n");
             print(traceback.format_exc())
@@ -656,6 +661,8 @@ if __name__ == '__main__':
         elif sys.argv[iarg] == "-t":
             iarg=iarg+1
             test_target = int(sys.argv[iarg])
+        elif sys.argv[iarg] == "-nc":
+            UseProcessChecker=False
         iarg=iarg+1
 
     if encoder_path == qsvencc_path:
