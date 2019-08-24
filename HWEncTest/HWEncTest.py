@@ -400,7 +400,9 @@ class HWEncTest:
         cmd = cmd.replace("$(OutputFile)", self.output_file_path(test_data))
         cmd = cmd.replace("$(ExePath)", self.encoder_path)
         cmd = cmd.replace("$(FFmpegPath)", ffmpeg_path)
-        if encoder_name == "nvencc":
+        if encoder_name == "qsvencc":
+            cmd = cmd.replace("--vpp-subburn", "--vpp-sub")
+        elif encoder_name == "nvencc":
             cmd = cmd.replace("--d3d11", "")
             cmd = cmd.replace("--d3d9", "")
             cmd = cmd.replace("--disable-d3d", "")
