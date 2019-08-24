@@ -406,6 +406,7 @@ class HWEncTest:
             cmd = cmd.replace("--disable-d3d", "")
             cmd = cmd.replace("-u 7", "--preset performance")
             cmd = cmd.replace("--avqsv", "--avhw")
+            cmd = cmd + " --gpu-select cores=0.0,gen=0.0,gpu=0.5"
         elif encoder_name == "vceencc":
             cmd = cmd.replace("-u 7", "")
             cmd = cmd.replace("--tff", "")
