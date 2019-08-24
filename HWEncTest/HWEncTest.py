@@ -416,7 +416,7 @@ class HWEncTest:
             cmd = cmd.replace("--vpp-deinterlace normal", "")
             cmd = cmd.replace("--vpp-deinterlace bob", "")
             cmd = cmd.replace("--avqsv", "--avhw")
-            cmd = remove_cmd(cmd, "--trim", True)
+            #cmd = remove_cmd(cmd, "--trim", True)
         return cmd
 
     def output_file_path(self, test_data):
