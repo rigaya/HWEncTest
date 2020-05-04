@@ -23,13 +23,23 @@ input_xlsx = ""
 output_xlsx_filename = "0000_result.xlsx"
 encoder_log_path = ""
 encoder_log_prefix = ".log"
-x264_path = r'x64\x264.exe'
-avs2pipemod_path = r'x86\Avs2Pipemod.exe'
-qsvencc_path = r'x64\QSVEncC64.exe'
-nvencc_path = r'x86\NVEncC.exe'
-vceencc_path = r'x86\VCEEncC.exe'
-ffmpeg_path = r'x86\ffmpeg.exe'
-mediainfo_path = r'MediaInfo\MediaInfo.exe'
+
+x264_path = "x264"
+avs2pipemod_path = ""
+qsvencc_path = "qsvencc"
+nvencc_path = "nvencc"
+vceencc_path = "vceencc"
+ffmpeg_path = "ffmpeg"
+mediainfo_path = "mediainfo"
+
+x264_path_win = r'x64\x264.exe'
+avs2pipemod_path_win = r'x86\Avs2Pipemod.exe'
+qsvencc_path_win = r'x64\QSVEncC64.exe'
+nvencc_path_win = r'x86\NVEncC.exe'
+vceencc_path_win = r'x86\VCEEncC.exe'
+ffmpeg_path_win = r'x86\ffmpeg.exe'
+mediainfo_path_win = r'MediaInfo\MediaInfo.exe'
+
 mediainfo_template = r'HWEncTestMediaInfoTemplate.txt'
 mediainfo_check = False
 mediainfo_check_log_appendix = ".mediainfo.txt"
@@ -76,18 +86,21 @@ def kill_proc_tree(pid, including_parent=True):
 
 class ProcessChecker:
     process = None
+    cpuThreshold = 0.5
 
-    def __init__(self, _process):
+    def __init__(self, _process, _cpuThreshold):
         self.process = _process
+        self.cpuThreshold = _cpuThreshold
 
     #プロセスの終了を待機し、終了コードを取得する
     #プロセスのCPU使用率が連続で十分低かったら、
     #プロセスが強制終了したとみなし、1を返す
     def wait_or_kill_if_dead(self, exename):
         ps = psutil.Process(self.process.pid)
-        if exename != "cmd.exe":
+        shellExeName = "cmd.exe" if os.name == 'nt' else "sh"
+        if exename != shellExeName:
             try:
-                while ps.name() == "cmd.exe":
+                while ps.name() == shellExeName:
                     for pchild in ps.children():
                         if exename in pchild.name():
                             ps = pchild
@@ -105,7 +118,7 @@ class ProcessChecker:
         while return_code is None and cpu_usage_none_count < CPU_USAGE_NONE_MAX:
             try:
                 cpu_usage = ps.cpu_percent(interval=1)
-                if cpu_usage < 0.5:
+                if cpu_usage * float(psutil.cpu_count()) < self.cpuThreshold:
                     cpu_usage_none_count = cpu_usage_none_count + 1
                 else:
                     cpu_usage_none_count = 0
@@ -412,7 +425,9 @@ class HWEncTest:
             cmd = cmd + " --gpu-select cores=0.0,gen=0.0,gpu=0.5"
         elif encoder_name == "vceencc":
             cmd = cmd.replace("-u 7", "")
-            cmd = cmd.replace("--tff", "")
+            if not '--vpp-afs' in cmd:
+                cmd = cmd.replace("--tff", "")
+                cmd = cmd.replace("--bff", "")
             cmd = cmd.replace("--d3d11", "")
             cmd = cmd.replace("--d3d9", "")
             cmd = cmd.replace("--disable-d3d", "")
@@ -452,7 +467,12 @@ class HWEncTest:
         if add_input:
             cmd = cmd + " -i \"" + test_data.inptut_file + "\""
 
-        return cmd + " 2> nul"
+        # cmd = cmd + " --log-level debug"
+        cmd = cmd + " --no-mp4opt"
+
+        if os.name == "posix":
+            cmd = cmd.replace(";", "\\;") #エスケープが必要
+        return cmd
 
     def run_encoder(self, test_data):
         assert isinstance(test_data, TestData)
@@ -461,9 +481,16 @@ class HWEncTest:
         killed = False
 
         try:
-            p = subprocess.Popen(cmd, shell=True)
+            p = subprocess.Popen(cmd, stderr = subprocess.DEVNULL, shell=True)
             if UseProcessChecker:
-                proc_check = ProcessChecker(p)
+                cpuThreshold = 0.5
+                if self.encoder_name == "qsvencc":
+                    cpuThreshold = 0.5
+                elif self.encoder_name == "nvencc":
+                    cpuThreshold = 0.01
+                elif self.encoder_name == "vceencc":
+                    cpuThreshold = 0.01
+                proc_check = ProcessChecker(p, cpuThreshold)
                 ret, killed = proc_check.wait_or_kill_if_dead(os.path.basename(self.encoder_path))
             else:
                 ret = p.wait()
@@ -477,16 +504,16 @@ class HWEncTest:
 
     def run_mediainfo(self, test_data):
         assert isinstance(test_data, TestData)
-        cmd = "\"" + mediainfo_path + "\"" \
-            + " --Output=file://" + mediainfo_template + " " \
-            + "\"" + self.output_file_path(test_data) + "\" > " \
-            + "\"" + self.output_file_path(test_data) + mediainfo_check_log_appendix + "\""
-        try:
-            p = subprocess.run(cmd, shell=True)
-            ret = p.returncode
-        except:
-            ret = 1
-        return ret
+        with open(self.output_file_path(test_data) + mediainfo_check_log_appendix, 'w') as outfile:
+            cmd = "\"" + mediainfo_path + "\"" \
+                + " --Output=file://" + mediainfo_template + " " \
+                + "\"" + self.output_file_path(test_data) + "\""
+            try:
+                p = subprocess.run(cmd, stdout=outfile, shell=True)
+                ret = p.returncode
+            except:
+                ret = 1
+            return ret
 
     def compare_mediainfo(self, test_data):
         assert isinstance(test_data, TestData)
@@ -595,14 +622,17 @@ class HWEncTest:
 
         if "option_check" not in test_data.comment:
             try:
-                fp_enc_log = open(self.log_file_path(test_data), "r")
-                log_lines = fp_enc_log.readlines()
+                fp_enc_log = open(self.log_file_path(test_data), "rb")
+                log_lines = fp_enc_log.read()
                 fp_enc_log.close()
 
                 fp_enc_log = open(self.encoder_log_path, "a")
                 fp_enc_log.writelines("-------------------------------------------------------------------------------\n")
                 fp_enc_log.writelines("start test #" + str(test_data.data_id) + "\n")
-                fp_enc_log.writelines(log_lines)
+                fp_enc_log.close()
+
+                fp_enc_log = open(self.encoder_log_path, "ab")
+                fp_enc_log.write(log_lines)
                 fp_enc_log.close()
             except:
                 print("error opening " + encoder_name + " log file.\n")
@@ -616,12 +646,24 @@ class HWEncTest:
 
 
 if __name__ == '__main__':
-    computer_name = os.environ.get("COMPUTERNAME")
     sleep_after_run = False
     print(sys.version_info)
 
     mediainfo_compare_dir = ""
     process = 1
+    
+    if os.name == 'nt':
+        x264_path = x264_path_win
+        avs2pipemod_path = avs2pipemod_path_win
+        qsvencc_path = qsvencc_path_win
+        nvencc_path = nvencc_path_win
+        vceencc_path = vceencc_path_win
+        ffmpeg_path = ffmpeg_path_win
+        mediainfo_path = mediainfo_path_win
+        computer_name = os.environ.get("COMPUTERNAME")
+    else:
+        computer_name = subprocess.check_output("hostname", shell=True).decode('utf-8').strip().replace('-', '_')
+        print(computer_name)
 
     iarg = 0
     while iarg < len(sys.argv):
