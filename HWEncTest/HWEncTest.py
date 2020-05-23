@@ -441,7 +441,7 @@ class HWEncTest:
         assert isinstance(test_data, TestData)
         output_file = test_data.output_prefix
         if output_file != "-" and test_data.inptut_file != "-":
-            output_file = os.path.join(outputdir, "{0:04d}".format(test_data.data_id) + "_" + test_data.inptut_file + test_data.output_prefix)
+            output_file = os.path.join(outputdir, "{0:04d}".format(test_data.data_id) + "_" + test_data.inptut_file.replace(':', '_') + test_data.output_prefix)
         return output_file
 
     def log_file_path(self, test_data):
