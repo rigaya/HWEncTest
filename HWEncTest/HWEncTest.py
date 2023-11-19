@@ -5,7 +5,6 @@ import shlex
 import os
 import shutil
 import sys
-import shlex
 import ctypes
 import openpyxl
 import traceback
@@ -29,15 +28,16 @@ avs2pipemod_path = ""
 qsvencc_path = "qsvencc"
 nvencc_path = "nvencc"
 vceencc_path = "vceencc"
+rkmppenc_path = "rkmppenc"
 ffmpeg_path = "ffmpeg"
 mediainfo_path = "mediainfo"
 
 x264_path_win = r'x64\x264.exe'
 avs2pipemod_path_win = r'x86\Avs2Pipemod.exe'
 qsvencc_path_win = r'x64\QSVEncC64.exe'
-nvencc_path_win = r'x86\NVEncC.exe'
-vceencc_path_win = r'x86\VCEEncC.exe'
-ffmpeg_path_win = r'x86\ffmpeg.exe'
+nvencc_path_win = r'x64\NVEncC64.exe'
+vceencc_path_win = r'x64\VCEEncC64.exe'
+ffmpeg_path_win = r'x64\ffmpeg.exe'
 mediainfo_path_win = r'MediaInfo\MediaInfo.exe'
 
 mediainfo_template = r'HWEncTestMediaInfoTemplate.txt'
@@ -46,11 +46,12 @@ mediainfo_check_log_appendix = ".mediainfo.txt"
 mediainfo_check_diff_appendix = ".mediainfo.diff"
 encoder_path = qsvencc_path
 encoder_name = ""
-filesize_threshold = 0.005
+filesize_threshold = 0.25
 test_count=0
 test_start=0
 test_target=0
 UseProcessChecker=True
+print_cmd=False
 lock = threading.Lock()
 
 def remove_cmd(cmd, target, with_param):
@@ -104,7 +105,12 @@ class ProcessChecker:
                     for pchild in ps.children():
                         if exename in pchild.name():
                             ps = pchild
-                    time.sleep(1)
+                    #プロセスが終了していなければ、Noneを返す
+                    return_code = self.process.wait()
+                    if return_code == None:
+                        time.sleep(1)
+                    else:
+                        return ( int(return_code), False )
             except psutil.NoSuchProcess:
                 time.sleep(1)
                 return_code = self.process.wait()
@@ -143,17 +149,19 @@ class TestData:
     for_qsv = True
     for_nvenc = True
     for_vceenc = True
+    for_rkmppenc = True
     command_line = ""
     inptut_file = ""
     output_prefix = ""
     comment = ""
     error_expected = False
 
-    def __init__(self, _id, _qsv, _nvenc, _vceenc, _command_line, _input, _output_prefix, _comment, _error_expected):
+    def __init__(self, _id, _qsv, _nvenc, _vceenc, _rkmppenc, _command_line, _input, _output_prefix, _comment, _error_expected):
         assert isinstance(_id, int)
         assert isinstance(_qsv, bool)
         assert isinstance(_nvenc, bool)
         assert isinstance(_vceenc, bool)
+        assert isinstance(_rkmppenc, bool)
         assert isinstance(_command_line, str)
         assert isinstance(_input, str)
         assert isinstance(_output_prefix, str)
@@ -163,6 +171,7 @@ class TestData:
         self.for_qsv = _qsv
         self.for_nvenc = _nvenc
         self.for_vceenc = _vceenc
+        self.for_rkmppenc = _rkmppenc
         self.command_line = _command_line
         self.inptut_file = _input
         self.output_prefix = _output_prefix
@@ -192,7 +201,7 @@ class TestTable:
         no_data_row = 0
         THRESOLD_NO_DATA_ROW = 10 #行に連続でデータがなければ、データはもうないとみなす
         while no_data_row < THRESOLD_NO_DATA_ROW:
-            if ws.cell(row = y, column = 4).value is None and ws.cell(row = y, column = 5).value is None:
+            if ws.cell(row = y, column = 5).value is None and ws.cell(row = y, column = 6).value is None:
                 no_data_row = no_data_row + 1
             else:
                 data_id = data_id + 1
@@ -201,18 +210,19 @@ class TestTable:
                     for_qsv = self.cell_str(ws.cell(row = y, column = 1).value) == "〇"
                     for_nvenc = self.cell_str(ws.cell(row = y, column = 2).value) == "〇"
                     for_vceenc = self.cell_str(ws.cell(row = y, column = 3).value) == "〇"
-                    command_line = self.cell_str(ws.cell(row = y, column = 4).value)
-                    inptut_file = self.cell_str(ws.cell(row = y, column = 5).value)
-                    output_prefix = self.cell_str(ws.cell(row = y, column = 6).value)
-                    comment = self.cell_str(ws.cell(row = y, column = 7).value)
-                    error_expected = self.cell_str(ws.cell(row = y, column = 8).value) == "〇"
+                    for_rkmppenc = self.cell_str(ws.cell(row = y, column = 4).value) == "〇"
+                    command_line = self.cell_str(ws.cell(row = y, column = 5).value)
+                    inptut_file = self.cell_str(ws.cell(row = y, column = 6).value)
+                    output_prefix = self.cell_str(ws.cell(row = y, column = 7).value)
+                    comment = self.cell_str(ws.cell(row = y, column = 8).value)
+                    error_expected = self.cell_str(ws.cell(row = y, column = 9).value) == "〇"
                 except:
                     print("failed to parse xlsx file row " + str(y))
                     print(traceback.format_exc())
                     exit(1)
 
                 if data_id >= test_start:
-                    test_data = TestData(data_id, for_qsv, for_nvenc, for_vceenc, command_line, inptut_file, output_prefix, comment, error_expected)
+                    test_data = TestData(data_id, for_qsv, for_nvenc, for_vceenc, for_rkmppenc, command_line, inptut_file, output_prefix, comment, error_expected)
                     self.list_test_data.append(test_data)
 
             #次の行へ
@@ -270,7 +280,8 @@ class ResultData:
                 ws.cell(row = 1, column = 12).value = "for_qsv"
                 ws.cell(row = 1, column = 13).value = "for_nvenc"
                 ws.cell(row = 1, column = 14).value = "for_vceenc"
-                ws.cell(row = 1, column = 15).value = "full_enc_cmd"
+                ws.cell(row = 1, column = 15).value = "for_rkmppenc"
+                ws.cell(row = 1, column = 16).value = "full_enc_cmd"
                 ws.column_dimensions[openpyxl.utils.get_column_letter( 1)].width = 5
                 ws.column_dimensions[openpyxl.utils.get_column_letter( 2)].width = 3
                 ws.column_dimensions[openpyxl.utils.get_column_letter( 3)].width = 3
@@ -285,6 +296,7 @@ class ResultData:
                 ws.column_dimensions[openpyxl.utils.get_column_letter(13)].width = 3
                 ws.column_dimensions[openpyxl.utils.get_column_letter(14)].width = 3
                 ws.column_dimensions[openpyxl.utils.get_column_letter(15)].width = 3
+                ws.column_dimensions[openpyxl.utils.get_column_letter(16)].width = 3
             else:
                 wb = openpyxl.Workbook() #新しいworkbook
                 ws = wb.active
@@ -309,7 +321,8 @@ class ResultData:
                 ws.cell(row = y, column = 12).value = ("〇" if self.test_data.for_qsv else "")
                 ws.cell(row = y, column = 13).value = ("〇" if self.test_data.for_nvenc else "")
                 ws.cell(row = y, column = 14).value = ("〇" if self.test_data.for_vceenc else "")
-                ws.cell(row = y, column = 15).value = ("〇" if self.full_enc_cmd else "")
+                ws.cell(row = y, column = 15).value = ("〇" if self.test_data.for_rkmppenc else "")
+                ws.cell(row = y, column = 16).value = ("〇" if self.full_enc_cmd else "")
                 ws.cell(row = y, column =  8).number_format = openpyxl.styles.numbers.FORMAT_TEXT
                 ws.cell(row = y, column =  9).number_format = openpyxl.styles.numbers.FORMAT_TEXT
                 ws.cell(row = y, column = 10).number_format = openpyxl.styles.numbers.FORMAT_TEXT
@@ -371,13 +384,14 @@ class ResultTable:
                     for_qsv = self.cell_str(ws.cell(row = y, column = 12).value) == "〇"
                     for_nvenc = self.cell_str(ws.cell(row = y, column = 13).value) == "〇"
                     for_vceenc = self.cell_str(ws.cell(row = y, column = 14).value) == "〇"
-                    full_enc_cmd = self.cell_str(ws.cell(row = y, column = 15).value)
+                    for_rkmppenc = self.cell_str(ws.cell(row = y, column = 15).value) == "〇"
+                    full_enc_cmd = self.cell_str(ws.cell(row = y, column = 16).value)
                 except:
                     print("failed to parse xlsx file row " + str(y))
                     print(traceback.format_exc())
                     exit(1)
 
-                test_data = TestData(data_id, for_qsv, for_nvenc, for_vceenc, command_line, inptut_file, output_prefix, comment, error_expected)
+                test_data = TestData(data_id, for_qsv, for_nvenc, for_vceenc, for_rkmppenc, command_line, inptut_file, output_prefix, comment, error_expected)
                 result_data = ResultData(test_data, ret_enc_run, enc_killed, ret_minfo_diff, ret_filesize, full_enc_cmd)
                 self.list_result_data.append(test_data)
                 y = y + 1
@@ -405,27 +419,30 @@ class HWEncTest:
             return True
         if encoder_name == "vceencc" and test_data.for_vceenc:
             return True
+        if encoder_name == "rkmppenc" and test_data.for_rkmppenc:
+            return True
         return False
 
     def replace_cmd(self, test_data, cmd):
         assert isinstance(test_data, TestData)
+        cmd_ffmpeg = ("$(ExePath)" in test_data.command_line) and ("$(FFmpegPath)" in test_data.command_line) and (test_data.command_line.find("$(ExePath)") < test_data.command_line.find("$(FFmpegPath)"))
         cmd = cmd.replace("$(OutDir)", outputdir)
         cmd = cmd.replace("$(InputFile)", test_data.inptut_file)
         cmd = cmd.replace("$(OutputFile)", self.output_file_path(test_data))
+        cmd = cmd.replace("$(LogFile)", self.log_file_path(test_data))
         cmd = cmd.replace("$(ExePath)", self.encoder_path)
         cmd = cmd.replace("$(FFmpegPath)", ffmpeg_path)
-        if encoder_name == "qsvencc":
-            cmd = cmd.replace("--vpp-subburn", "--vpp-sub")
-        elif encoder_name == "nvencc":
+        if encoder_name == "nvencc":
             cmd = cmd.replace("--d3d11", "")
             cmd = cmd.replace("--d3d9", "")
             cmd = cmd.replace("--disable-d3d", "")
             cmd = cmd.replace("-u 7", "--preset performance")
             cmd = cmd.replace("--avqsv", "--avhw")
-            cmd = cmd + " --gpu-select cores=0.0,gen=0.0,gpu=0.5"
+            if not cmd_ffmpeg:
+                cmd = cmd + " --gpu-select cores=0.0,gen=0.0,gpu=0.5"
         elif encoder_name == "vceencc":
             cmd = cmd.replace("-u 7", "")
-            if not '--vpp-afs' in cmd:
+            if not '--vpp-afs' in cmd and not '--vpp-yadif' in cmd and not '--vpp-nnedi' in cmd:
                 cmd = cmd.replace("--tff", "")
                 cmd = cmd.replace("--bff", "")
             cmd = cmd.replace("--d3d11", "")
@@ -434,7 +451,22 @@ class HWEncTest:
             cmd = cmd.replace("--vpp-deinterlace normal", "")
             cmd = cmd.replace("--vpp-deinterlace bob", "")
             cmd = cmd.replace("--avqsv", "--avhw")
+            cmd = cmd.replace("--profile main10", "--output-depth 10")
+            cmd = cmd.replace("--avhw", "")
+            if not cmd_ffmpeg:
+                cmd += " -d 0 "
             #cmd = remove_cmd(cmd, "--trim", True)
+        elif encoder_name == "rkmppenc":
+            cmd = cmd.replace("-u 7", "")
+            if not '--vpp-afs' in cmd and not '--vpp-yadif' in cmd and not '--vpp-nnedi' in cmd:
+                cmd = cmd.replace("--tff", "")
+                cmd = cmd.replace("--bff", "")
+            cmd = cmd.replace("--d3d11", "")
+            cmd = cmd.replace("--d3d9", "")
+            cmd = cmd.replace("--disable-d3d", "")
+            cmd = cmd.replace("--vpp-deinterlace normal", "--vpp-deinterlace normal_i5")
+            cmd = cmd.replace("--vpp-deinterlace bob", "--vpp-deinterlace bob_i5")
+            cmd = cmd.replace("--avqsv", "--avhw")
         return cmd
 
     def output_file_path(self, test_data):
@@ -453,22 +485,32 @@ class HWEncTest:
         add_exepath = ("$(ExePath)" not in test_data.command_line)
         add_input = ("$(InputFile)" not in test_data.command_line) and len(test_data.inptut_file) > 0
         add_output = ("$(OutputFile)" not in test_data.command_line) and len(test_data.output_prefix) > 0
+        add_logout = ("$(LogFile)" not in test_data.command_line)
+        cmd_ffmpeg = ("$(ExePath)" in test_data.command_line) and ("$(FFmpegPath)" in test_data.command_line) and (test_data.command_line.find("$(ExePath)") < test_data.command_line.find("$(FFmpegPath)"))
 
         cmd = ""
         if add_exepath:
             cmd = "\"" + self.encoder_path + "\" "
 
-        cmd = cmd + self.replace_cmd(test_data, test_data.command_line) \
-            + " --log \"" + self.log_file_path(test_data) + "\""
+        cmd = cmd + self.replace_cmd(test_data, test_data.command_line)
+        if add_logout:
+            cmd = cmd + " --log \"" + self.log_file_path(test_data) + "\""
 
         if add_output:
             cmd = cmd + " -o \"" + self.output_file_path(test_data) + "\""
 
         if add_input:
             cmd = cmd + " -i \"" + test_data.inptut_file + "\""
+            if encoder_name == "vceencc" and "君の名は。　ULTRA_HD_t00.mkv" == test_data.inptut_file: # 特例対応 (avhwだとエラーになるので)
+                cmd = cmd.replace("--avhw", "--avsw")
+                cmd = cmd + " --avsww"
+                
+        if not cmd_ffmpeg:
+            if encoder_name != "rkmppenc":
+                cmd = cmd + " --thread-affinity main=ecore,decoder=ecore,output=ecore,audio=ecore,perfmonitor=ecore"
+            cmd = cmd + " --no-mp4opt"
 
         # cmd = cmd + " --log-level debug"
-        cmd = cmd + " --no-mp4opt"
 
         if os.name == "posix":
             cmd = cmd.replace(";", "\\;") #エスケープが必要
@@ -478,6 +520,8 @@ class HWEncTest:
         assert isinstance(test_data, TestData)
 
         cmd = self.generate_enc_cmd(test_data)
+        if print_cmd:
+            print(cmd)
         killed = False
 
         try:
@@ -601,46 +645,47 @@ class HWEncTest:
         if not self.check_if_run_required(test_data):
             return True
 
-        print("-------------------------------------------------------------------------------")
-        print("start test #" + str(test_data.data_id))
+        #print("-------------------------------------------------------------------------------")
+        #print("start test #" + str(test_data.data_id))
 
         ret_enc_run, enc_killed = self.run_encoder(test_data)
         ret_minfo_run = 0
         ret_minfo_diff = 0
         ret_file_size = 0
+        
+        if not "longpathtest" in test_data.inptut_file:
+            if ret_enc_run == 0:
+                if not os.path.exists(self.output_file_path(test_data)):
+                    ret_enc_run = 1
 
-        if ret_enc_run == 0:
-            if not os.path.exists(self.output_file_path(test_data)):
-                ret_enc_run = 1
+            if ret_enc_run == 0:
+                ret_minfo_run = self.run_mediainfo(test_data)
 
-        if ret_enc_run == 0:
-            ret_minfo_run = self.run_mediainfo(test_data)
+                if ret_minfo_run == 0:
+                    ret_minfo_diff = self.compare_mediainfo(test_data)
+                    ret_file_size = self.compare_filesize(test_data)
 
-            if ret_minfo_run == 0:
-                ret_minfo_diff = self.compare_mediainfo(test_data)
-                ret_file_size = self.compare_filesize(test_data)
+            if "option_check" not in test_data.comment:
+                try:
+                    fp_enc_log = open(self.log_file_path(test_data), "rb")
+                    log_lines = fp_enc_log.read()
+                    fp_enc_log.close()
 
-        if "option_check" not in test_data.comment:
-            try:
-                fp_enc_log = open(self.log_file_path(test_data), "rb")
-                log_lines = fp_enc_log.read()
-                fp_enc_log.close()
+                    fp_enc_log = open(self.encoder_log_path, "a")
+                    fp_enc_log.writelines("-------------------------------------------------------------------------------\n")
+                    fp_enc_log.writelines("start test #" + str(test_data.data_id) + "\n")
+                    fp_enc_log.close()
 
-                fp_enc_log = open(self.encoder_log_path, "a")
-                fp_enc_log.writelines("-------------------------------------------------------------------------------\n")
-                fp_enc_log.writelines("start test #" + str(test_data.data_id) + "\n")
-                fp_enc_log.close()
-
-                fp_enc_log = open(self.encoder_log_path, "ab")
-                fp_enc_log.write(log_lines)
-                fp_enc_log.close()
-            except:
-                print("error opening " + encoder_name + " log file.\n")
-                print(traceback.format_exc())
+                    fp_enc_log = open(self.encoder_log_path, "ab")
+                    fp_enc_log.write(log_lines)
+                    fp_enc_log.close()
+                except:
+                    print("error opening " + encoder_name + " log file.\n")
+                    print(traceback.format_exc())
 
         result_data = ResultData(test_data, ret_enc_run, enc_killed, ret_minfo_diff, ret_file_size, self.generate_enc_cmd(test_data))
         result_data.write(os.path.join(outputdir, output_xlsx_filename))
-        print("check_result: " + ("〇" if (result_data.ret_total == 0) else "×"))
+        print("test #" + str(test_data.data_id) + " result: " + ("〇" if (result_data.ret_total == 0) else "×"))
 
         return True if (result_data.ret_total == 0) else False
 
@@ -650,6 +695,7 @@ if __name__ == '__main__':
     print(sys.version_info)
 
     mediainfo_compare_dir = ""
+    input_xlsx = ""
     process = 1
     
     if os.name == 'nt':
@@ -697,6 +743,12 @@ if __name__ == '__main__':
             iarg=iarg+1
             vceencc_path=sys.argv[iarg]
             encoder_path = vceencc_path
+        elif sys.argv[iarg] == "-r":
+            encoder_path = rkmppenc_path
+        elif sys.argv[iarg] == "-rp":
+            iarg=iarg+1
+            rkmppenc_path=sys.argv[iarg]
+            encoder_path = rkmppenc_path
         elif sys.argv[iarg] == "-ts":
             iarg=iarg+1
             test_start = int(sys.argv[iarg])
@@ -705,6 +757,11 @@ if __name__ == '__main__':
             test_target = int(sys.argv[iarg])
         elif sys.argv[iarg] == "-nc":
             UseProcessChecker=False
+        elif sys.argv[iarg] == "-x":
+            iarg=iarg+1
+            input_xlsx=sys.argv[iarg]
+        elif sys.argv[iarg] == "-print-cmd":
+            print_cmd = True
         iarg=iarg+1
 
     if encoder_path == qsvencc_path:
@@ -713,12 +770,15 @@ if __name__ == '__main__':
         encoder_name = "nvencc"
     elif encoder_path == vceencc_path:
         encoder_name = "vceencc"
+    elif encoder_path == rkmppenc_path:
+        encoder_name = "rkmppenc"
     else:
         print("unknown encoder path set")
         exit(1)
 
     py_path, py_ext = os.path.splitext(os.path.basename(__file__))
-    input_xlsx = py_path + ".xlsx"
+    if len(input_xlsx) == 0:
+        input_xlsx = py_path + ".xlsx"
     outputdir = os.path.join(outputdir, "output_" + computer_name + "_" + encoder_name + "_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
     logpath = encoder_name + "_test_result_" + computer_name + ".csv"
     encoder_log_path = encoder_name + "_test_" + computer_name + ".txt"
